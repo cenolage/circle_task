@@ -4,10 +4,10 @@
 # UC Berkeley, 2014
 
 import time
-import tfx
-import smach
+import tfx # ben kehoe's library; makes working with transforms and poses simpler
+import smach # library for building hierarchical state machines; task-level exeuction and coordination
 import rospy
-import pickle
+import pickle # python serialization
 from davinci_utils import raven_util
 from davinci_utils import raven_constants
 from davinci_trajectory.raven_controller import RavenController
@@ -27,29 +27,33 @@ class MasterClass(smach.State):
         The excute method simply iterates through all the possible transitions
         from the state. """
 
+        # typo?
+
     def __init__(self):
         self.outcomes = None
+        # should these constants be imported from a file or set at the top of the file?
         self.homePoseLeft = tfx.pose([-0.04907726751924995, 0.027288735500984575, -0.1211606501908539],
             (0.9835887535507493, -0.09932464655036198, -0.14884734393715604, 0.023070472014753367))
         self.homePoseRight = tfx.pose([0.061241857051286236, 0.014307808069346816, -0.10446866837544996],
             (-0.9689889616996428, 0.1939060552483166, -0.1474787309756946, 0.04136251626876463))
-        rospy.sleep(5)
+        rospy.sleep(5) # why 5?
 
     def execute(self, userdata):        
         smach.loginfo(self.__class__.__name__ + " must be subclassed. It does nothing.")
-        time.sleep(SLEEP_TIME)
-        self.counter += 1
+        time.sleep(SLEEP_TIME) # why do we need to sleep?
+        self.counter += 1 # shouldn't this be incremented after?
         if self.outcomes is None:
             self.outcomes = self.get_registered_outcomes()
         return self.outcomes[self.counter%len(self.outcomes)]
+        # all of the subclasses seem to override this method?
 
 # -----------------------   Phase 1  -------------------------------------
 
 class Start(MasterClass):
     def __init__(self, davinciArmRight):
         super(self.__class__, self).__init__()
-        smach.State.__init__(self, outcomes = ['success'])
-        self.davinciArmRight = davinciArmRight
+        smach.State.__init__(self, outcomes = ['success']) # weird that we're calling two constructors...can we put this line into MasterClass' constructor?
+        self.davinciArmRight = davinciArmRight # don't need left?
 
     def execute(self, userdata):
         return 'success'
@@ -63,6 +67,10 @@ class DetectCircle(MasterClass):
     def execute(self, userdata):
         return 'success'
 
+        # exact same as Start?
+
+# warp? not really sure what's going on here. also circle_position_cb?
+# so this is for correcting trajectory because of...? but it only corrects 1/20th of the trajectory?
 class Warp(MasterClass):
     def __init__(self, davinciArmRight, traj, left_arm):
         super(self.__class__, self).__init__()
@@ -85,6 +93,8 @@ class Warp(MasterClass):
         # Transform from camera frame to left arm robot frame
         self.B_L = tfx.lookupTransform('one_remote_center_link', 'left_AD')
         # Transform from camera frame to right arm robot frame
+
+        # should be right_AD?
         self.B_R = tfx.lookupTransform('two_remote_center_link', 'left_AD')
 
     def circle_position_cb(self, data):
@@ -102,17 +112,21 @@ class Warp(MasterClass):
         # M.position.z += 0.001
         curr_traj = self.left_arm.traj
         new_traj = {}
+
+        # range(1, 8)?
         for i in range(8):
             if i != 0:
                 new_list_of_pairs = []
                 j = 0
                 for pair in curr_traj[i]:
+                    # adjusting every 20th pair?
                     if j % 20 == 0:
                         new_pose = pair[0]
                         new_pose.frame = "one_remote_center_link"
                         new_pose = raven_util.convertToFrame(new_pose, "circle_chessboard")
                         new_pose.position.x += self.A.position.x
                         new_pose.position.y += self.A.position.y
+                        # ?
                         if i == 2:
                             new_pose.position.z += 0.002
                         # new_pose.position.x += 0.005
@@ -154,10 +168,14 @@ class Warp(MasterClass):
         return new_traj
 
     def publish_traj_ros(self, traj, stage = 1):
+        # weird that L & R aren't symmetrical
+        # stage poses?
         stage_poses_original_R = self.traj[stage]
         stage_poses_warped_R = traj[stage]
         stage_poses_original_L = self.original_left_arm_traj[stage]
         stage_poses_warped_L = self.left_arm.traj[stage]
+
+        # use for loops instead? and why 0.002 and 0.02?
         i = 0
         while (i < len(stage_poses_original_R)):
             a = stage_poses_original_R[i][0]
@@ -201,6 +219,8 @@ class Warp(MasterClass):
         userdata.new_traj_R = new_traj_R
         return 'success'
 
+# explain smach.State constructor? also nothing actually happens? it goes back to the grasp state?
+
 class ExecuteRegrasp(MasterClass):
     def __init__(self, davinciArmRight):
         super(self.__class__, self).__init__()
@@ -209,6 +229,8 @@ class ExecuteRegrasp(MasterClass):
 
     def execute(self, userdata):
         return 'success'
+
+# davinciArmRight vs left_arm?
 
 class GraspGauze(MasterClass):
     def __init__(self, davinciArmRight, traj, left_arm):
@@ -224,6 +246,7 @@ class GraspGauze(MasterClass):
 
     def phase_cb(self, msg):
         print "Left Arm executing? - ", msg
+        # ?
         self.left_arm_executing = msg.data
 
     def wait(self):
@@ -240,6 +263,8 @@ class GraspGauze(MasterClass):
         rospy.sleep(1)
         self.wait()
         return 'success'
+
+# no possibility of failure?
 
 class CheckGrasp(MasterClass):
     def __init__(self, davinciArmRight):
@@ -447,6 +472,8 @@ class ExecutePartialTraj3(MasterClass):
         newPose.position.y += -0.01
         newPose.position.z += 0.01
         self.davinciArmRight.goToGripperPose(newPose)
+
+    # ?
 
     def execute_final_cut(self):
         for _ in range(8):
